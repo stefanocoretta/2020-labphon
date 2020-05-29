@@ -584,7 +584,55 @@ marginal_ln_post %>%
 
 ## Shrinkage
 
-```{r origin}
+```{r origin-1, include=FALSE}
+estimated_ln_tbl %>%
+  ggplot(aes(reorder(study_ref, Estimate), Estimate, linetype = syl_pos)) +
+  geom_hline(aes(yintercept = 0), colour = "grey") +
+  scale_x_discrete() +
+  geom_point(size = 2, position = position_dodge(width = 0.8)) +
+  geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5), width = 0, position = position_dodge(width = 0.8)) +
+  scale_color_brewer(type = "qual", palette = "Dark2", breaks = c("original", "meta-analysis")) +
+  scale_y_continuous(breaks = c(-0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1)) +
+  scale_linetype_discrete(labels = c("final", "non-final")) +
+  labs(
+    y = "Difference in vowel duration (log-odds)",
+    x = "Study",
+    linetype = "Syllable position",
+    colour = "Source"
+  ) +
+  coord_flip() +
+  theme(panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank())
+
+
+ggsave("./img/origin-1.png", width = 7, height = 4.5)
+```
+
+```{r origin-2, include=FALSE}
+estimated_ln_tbl %>%
+  ggplot(aes(reorder(study_ref, Estimate), Estimate, linetype = syl_pos)) +
+  geom_hline(aes(yintercept = 0), colour = "grey") +
+  scale_x_discrete() +
+  annotate("rect", xmin = 4.5, xmax = Inf, ymin = meta_ln_bm_q2.5, ymax = meta_ln_bm_q97.5, alpha = 0.5, fill = "#a6cee3") +
+  geom_point(size = 2, position = position_dodge(width = 0.8)) +
+  geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5), width = 0, position = position_dodge(width = 0.8)) +
+  scale_color_brewer(type = "qual", palette = "Dark2", breaks = c("original", "meta-analysis")) +
+  scale_y_continuous(breaks = c(-0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1)) +
+  scale_linetype_discrete(labels = c("final", "non-final")) +
+  labs(
+    # caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
+    y = "Difference in vowel duration (log-odds)",
+    x = "Study",
+    linetype = "Syllable position",
+    colour = "Source"
+  ) +
+  coord_flip() +
+  theme(panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank())
+
+
+ggsave("./img/origin-2.png", width = 7, height = 4.5)
+```
+
+```{r origin-3}
 estimated_ln_tbl %>%
   ggplot(aes(reorder(study_ref, Estimate), Estimate, linetype = syl_pos)) +
   geom_hline(aes(yintercept = 0), colour = "grey") +
@@ -597,7 +645,7 @@ estimated_ln_tbl %>%
   scale_y_continuous(breaks = c(-0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1)) +
   scale_linetype_discrete(labels = c("final", "non-final")) +
   labs(
-    caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
+    # caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
     y = "Difference in vowel duration (log-odds)",
     x = "Study",
     linetype = "Syllable position",
@@ -605,6 +653,8 @@ estimated_ln_tbl %>%
   ) +
   coord_flip() +
   theme(panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank())
+
+ggsave("./img/origin-3.png", width = 7, height = 4.5)
 ```
 
 ```{r studies-shrunk}
