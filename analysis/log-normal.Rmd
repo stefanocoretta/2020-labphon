@@ -1,0 +1,731 @@
+---
+title: "Log-normal models"
+author: "Stefano Coretta"
+date: "27/04/2020"
+output: 
+  html_document: 
+    highlight: tango
+    number_sections: yes
+    theme: paper
+    toc: yes
+bibliography: references.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = here::here())
+library(tidyverse)
+library(ggrepel)
+theme_set(theme_minimal())
+library(brms)
+library(bayesplot)
+library(tidybayes)
+library(broom.mixed)
+# devtools::install_github("stefanocoretta/coretta2019eng@v1.0.0")
+library(coretta2019eng) # Load Coretta 2019 data
+data("eng_durations")
+options(mc.cores = parallel::detectCores())
+```
+
+# Overview
+
+Across a wide variety of languages, vowels tend to be shorter when followed by voiceless consonants, and longer when followed by voiced ones.
+This phenomenon has been called the "voicing effect" [@mitleb1982] or "pre-fortis clipping" [@wells1990].
+Among the earliest traceable mentions to this phenomenon there are @meyer1903 for English [cited in @lindblom1967], @meyer1904 for German, @meyer1909 for Hungarian, and @gregoire1911 for French [all cited in @maddieson1976].
+After these, a great number of studies further confirmed the existence of the effect in these languages and reported it in an ever increasing list of others.
+
+English is the language that by far received the most attention in relation to the voicing effect [@heffner1937; @house1953; @lisker1957; @zimmerman1958; @peterson1960; @house1961; @sharf1962; @sharf1964; @lindblom1967; @halle1967; @halle1967a; @slis1969a; @slis1969b; @chen1970; @klatt1973; @lisker1974; @raphael1975; @umeda1975; @javkin1976; @port1982; @mack1982; @luce1985; @van-summers1987; @kluender1988; @de-jong1991; @laeufer1992; @fowler1992; @de-jong2004; @warren2005; @ko2018; @glewwe2018; @sanker2019, among others].
+
+In light of rising concerns for statistical power and publication bias [@roettger2018a; @kirby2018; @vasishth2019], it is fundamental to obtain a meta-analytical estimate of the voicing effect based on previous work, and to investigate potential biases that can affect the estimate.
+A Bayesian meta-analysis was carried out on 17 Bayesian estimates of the effect of voicing on vowel duration obtained from a selection of 13 studies of English according to the method described in @nicenboim2018a.
+
+# Read data
+
+<!-- Specify which studies and how they were selected -->
+
+```{r data, message=FALSE}
+stressed <- read_csv("./data/raw/stressed.csv") %>%
+  filter(manner == "stop") %>%
+  mutate(
+    voice = factor(voice, levels = c("voiceless", "voiced")),
+    n_syl = factor(n_syl, levels = c("mono", "di", "tri")),
+    word_pos_2 = ifelse(word_pos == "medial", "medial", "final")
+  ) %>%
+  mutate_if(is.character, as.factor)
+
+studies <- stressed %>%
+  select(study, n_syl:word_pos_2) %>%
+  unique() %>%
+  # Hussein 1994 is not included in the analysis, Port 1981 tri is included with
+  # Port 1981 di. Klatt 1973 is not included since they only provided grand means.
+  filter(study != "hussein1994", study != "port1981_tri", study != "klatt1973_mono", study != "klatt1973_di") %>%
+  droplevels()
+
+# ko18_data <- read_delim("./data/raw/ko2018.txt", delim = "\t")
+
+iterations <- 4000
+
+if (file.exists("./data/cache/estimated_ln_tbl.rds")) {
+  estimated_ln_tbl <- readRDS("./data/cache/estimated_ln_tbl.rds")
+}
+
+if (file.exists("./data/cache/estimated_ln_sd_tbl.rds")) {
+  estimated_ln_sd_tbl <- readRDS("./data/cache/estimated_ln_sd_tbl.rds")
+}
+```
+
+# Get studies estimates
+
+The first step is to get the estimate (with respective error) of the voicing effect for each study individually.
+A log-normal family distribution is used here for the likelihood, given evidence that speech durations tend to be log-normally distributed [@rosen2005; @ratnikova2017; @gahl2019].
+The calculated estimates will then be ratios of vowel duration (for example, an estimate of 1.5 means that vowels are 1.5 times longer when the following consonant is voiced).
+
+## Studies that provide means and standard deviation
+
+Using measurement error models with studies that reported standard deviations.
+The model includes `mi()` terms, where the standard error is calculated as $sd/\sqrt{N}$ ($N$ is the number of observations from which the standard deviation was obtained). See <https://github.com/paul-buerkner/brms/issues/643#issuecomment-483339742>.
+
+```{r port1981}
+p81_di <- filter(stressed, study == "port1981_di") %>%
+  mutate(obs = 1:n())
+p81_mono <- filter(stressed, study == "port1981_mono") %>%
+  mutate(obs = 1:n())
+
+# Fitting a lognormal likelihood with (voice|pair) leads to many divergent transitions.
+
+priors <- c(
+  prior(normal(0, 3.2), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicevoiced),
+  prior(normal(0, 0.1), class = sigma)
+)
+
+p81_di_ln_bm <- brm(
+  v_duration | mi(sd/sqrt(n_obs)) ~
+    voice,
+  data = p81_di,
+  prior = priors,
+  family = lognormal,
+  seed = 9899,
+  file = "./data/cache/p81_di_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 20),
+  iter = iterations,
+  save_mevars = TRUE
+)
+
+p81_mono_ln_bm <- brm(
+  v_duration | mi(sd/sqrt(n_obs)) ~
+    voice,
+  data = p81_mono,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/p81_mono_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 20),
+  iter = iterations,
+  save_mevars = TRUE
+)
+```
+
+```{r luce1985}
+l85_medial <- filter(stressed, study == "luce1985_medial")
+l85_final <- filter(stressed, study == "luce1985_final")
+
+priors <- c(
+  prior(normal(0, 3.2), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicevoiced),
+  prior(normal(0, 0.1), class = sd),
+  prior(normal(0, 0.1), class = sigma)
+  # prior(lkj(2), class = cor)
+)
+
+l85_medial_ln_bm <- brm(
+  v_duration | mi(sd/sqrt(n_obs)) ~
+    voice + (1|pair),
+  data = l85_medial,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/l85_medial_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 20),
+  iter = iterations,
+  save_mevars = TRUE
+)
+
+l85_final_ln_bm <- brm(
+  v_duration | mi(sd/sqrt(n_obs)) ~
+    voice + (1|pair),
+  data = l85_final,
+  family = lognormal(),
+  prior = priors,
+  seed = 9899,
+  file = "./data/cache/l85_final_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 20),
+  iter = iterations,
+  save_mevars = TRUE
+)
+```
+
+```{r davis1989}
+d89 <- filter(stressed, study == "davis1989") %>%
+  mutate(obs = 1:n())
+
+priors <- c(
+  prior(normal(0, 3), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicevoiced),
+  prior(normal(0, 0.1), class = sd),
+  prior(normal(0, 0.1), class = sigma),
+  prior(lkj(2), class = cor)
+)
+
+d89_ln_bm <- brm(
+  v_duration | mi(sd/sqrt(n_obs)) ~
+    voice + (1+voice|pair) + (1+voice|speaker),
+  data = d89,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/d89_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 20),
+  iter = iterations
+)
+```
+
+## Studies that provide only means (with no standard deviation)
+
+```{r heffner1937}
+h37 <- filter(stressed, study == "heffner1937")
+
+priors <- c(
+  prior(normal(0, 3), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicevoiced),
+  prior(normal(0, 0.1), class = sd),
+  prior(normal(0, 0.1), class = sigma)
+)
+
+h37_ln_bm <- brm(
+  v_duration ~
+    voice + (1|pair),
+  data = h37,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/h37_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 15),
+  iter = iterations
+)
+```
+
+```{r housefairbanks1953}
+hf53 <- filter(stressed, study == "housefairbanks1953")
+
+priors <- c(
+  prior(normal(0, 3), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicevoiced),
+  prior(normal(0, 0.1), class = sd),
+  prior(normal(0, 0.1), class = sigma)
+)
+
+hf53_ln_bm <- brm(
+  v_duration ~
+    voice + (1|pair),
+  data = hf53,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/hf53_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 15),
+  iter = iterations
+)
+```
+
+```{r zimmerman1958}
+z58 <- filter(stressed, study == "zimmerman1958")
+
+priors <- c(
+  prior(normal(0, 3), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicevoiced),
+  prior(normal(0, 0.1), class = sd),
+  prior(normal(0, 0.1), class = sigma)
+)
+
+z58_ln_bm <- brm(
+  v_duration ~
+    voice + (1|pair),
+  data = z58,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/z58_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 15),
+  iter = iterations
+)
+```
+
+```{r petersonlehiste1960}
+pl60 <- filter(stressed, study == "petersonlehiste1960")
+
+priors <- c(
+  prior(normal(0, 3), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicevoiced),
+  prior(normal(0, 0.1), class = sd),
+  prior(normal(0, 0.1), class = sigma)
+)
+
+pl60_ln_bm <- brm(
+  v_duration ~
+    voice + (1|pair),
+  data = pl60,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/pl60_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 15),
+  iter = iterations
+)
+```
+
+```{r sharf1962}
+s62_di <- filter(stressed, study == "sharf1962_di")
+s62_mono <- filter(stressed, study == "sharf1962_mono")
+
+priors <- c(
+  prior(normal(0, 3), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicevoiced),
+  prior(normal(0, 0.1), class = sd),
+  prior(normal(0, 0.1), class = sigma)
+)
+
+s62_di_ln_bm <- brm(
+  v_duration ~
+    voice + (1|pair),
+  data = s62_di,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/s62_di_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 15),
+  iter = iterations
+)
+
+s62_mono_ln_bm <- brm(
+  v_duration ~
+    voice + (1|pair),
+  data = s62_mono,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/s62_mono_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 15),
+  iter = iterations
+)
+```
+
+```{r chen1970}
+c70 <- filter(stressed, study == "chen1970")
+
+priors <- c(
+  prior(normal(0, 3), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicevoiced),
+  prior(normal(0, 0.1), class = sd),
+  prior(normal(0, 0.1), class = sigma)
+)
+
+c70_ln_bm <- brm(
+  v_duration ~
+    voice + (1|pair),
+  data = c70,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/c70_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 15),
+  iter = iterations
+)
+```
+
+```{r mack1982}
+m82 <- filter(stressed, study == "mack1982")
+
+priors <- c(
+  prior(normal(0, 3), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicevoiced),
+  prior(normal(0, 0.1), class = sd),
+  prior(normal(0, 0.1), class = sigma)
+)
+
+m82_ln_bm <- brm(
+  v_duration ~
+    voice + (1|pair),
+  data = m82,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/m82_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 15),
+  iter = iterations
+)
+```
+
+```{r laeufer1992}
+l92 <- filter(stressed, study == "laeufer1992")
+
+priors <- c(
+  prior(normal(0, 3), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicevoiced),
+  prior(normal(0, 0.1), class = sd),
+  prior(normal(0, 0.1), class = sigma)
+)
+
+l92_ln_bm <- brm(
+  v_duration ~
+    voice + (1|pair),
+  data = l92,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  file = "./data/cache/l92_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 15),
+  iter = iterations
+)
+```
+
+## Studies with raw data
+
+```{r ko2018}
+# k18 <- filter(ko18_data, phoneme %in% c("AE1", "EH1", "IH1")) %>%
+#   mutate(
+#     voice = factor(voice, levels = c("-voice", "+voice")),
+#     phoneme = factor(phoneme, levels = c("AE1", "EH1", "IH1"))
+#   )
+# 
+# contrasts(k18$phoneme) <- "contr.sum"
+
+priors <- c(
+  prior(normal(0, 3), class = Intercept),
+  prior(normal(0, 1), class = b, coef = voicePvoice),
+  prior(normal(0, 1), class = b, coef = phoneme1),
+  prior(normal(0, 1), class = b, coef = phoneme2),
+  prior(normal(0, 1), class = b, coef = voicePvoice:phoneme1),
+  prior(normal(0, 1), class = b, coef = voicePvoice:phoneme2),
+  prior(cauchy(0, 0.1), class = sd),
+  prior(cauchy(0, 0.1), class = sigma),
+  prior(lkj(2), class = cor)
+)
+
+k18_ln_bm <- brm(
+  duration ~
+    voice *
+    phoneme +
+    (1+voice|subj),
+  data = k18,
+  prior = priors,
+  family = lognormal(),
+  seed = 9899,
+  control = list(adapt_delta = 0.999, max_treedepth = 20),
+  file = "./data/cache/k18_ln_bm"
+)
+```
+
+```{r coretta2019}
+contrasts(eng_durations$vowel) <- "contr.sum"
+eng_durations_di <- filter(eng_durations, num_syl == "di")
+eng_durations_mono <- filter(eng_durations, num_syl == "mono")
+
+priors <- c(
+  set_prior("normal(0, 3)", class = "Intercept"),
+  set_prior("normal(0, 1)", class = "b", coef = "voicingvoiced"),
+  set_prior("normal(0, 1)", class = "b", coef = "vowel1"),
+  set_prior("normal(0, 1)", class = "b", coef = "vowel2"),
+  set_prior("normal(0, 1)", class = "b", coef = "voicingvoiced:vowel1"),
+  set_prior("normal(0, 1)", class = "b", coef = "voicingvoiced:vowel2"),
+  set_prior("normal(0, 1)", class = "b", coef = "speech_rate_c"),
+  set_prior("cauchy(0, 0.1)", class = "sd"),
+  set_prior("lkj(2)", class = "cor"),
+  set_prior("cauchy(0, 0.1)", class = "sigma")
+)
+
+c19_di_ln_bm <- brm(
+  v1_duration ~
+    voicing *
+    vowel +
+    speech_rate_c +
+    (1 + voicing | speaker) +
+    (1 | word),
+  data = eng_durations_di,
+  prior = priors,
+  family = lognormal(),
+  file = "./data/cache/c19_di_ln_bm",
+  control = list(adapt_delta = .9999, max_treedepth = 15),
+  iter = iterations
+)
+
+priors <- c(
+  set_prior("normal(0, 3)", class = "Intercept"),
+  set_prior("normal(0, 1)", class = "b", coef = "voicingvoiced"),
+  set_prior("normal(0, 1)", class = "b", coef = "vowel1"),
+  set_prior("normal(0, 1)", class = "b", coef = "vowel2"),
+  set_prior("normal(0, 1)", class = "b", coef = "voicingvoiced:vowel1"),
+  set_prior("normal(0, 1)", class = "b", coef = "voicingvoiced:vowel2"),
+  set_prior("normal(0, 1)", class = "b", coef = "speech_rate_c"),
+  set_prior("cauchy(0, 0.1)", class = "sd"),
+  set_prior("lkj(2)", class = "cor"),
+  set_prior("cauchy(0, 0.1)", class = "sigma")
+)
+
+c19_mono_ln_bm <- brm(
+  v1_duration ~
+    voicing *
+    vowel +
+    speech_rate_c +
+    (1 + voicing | speaker) +
+    (1 | word),
+  family = lognormal(),
+  data = eng_durations_mono,
+  prior = priors,
+  file = "./data/cache/c19_mono_ln_bm"
+)
+```
+
+## Estimated effects with error
+
+```{r estimated}
+if (!file.exists("./data/cache/estimated_ln_tbl.rds")) {
+  estimated_ln <- list()
+
+  # These are in alphabetical order so that joining below does not complain
+  # about different levels
+  estimated_ln[["chen1970"]] <- fixef(c70_ln_bm)["voicevoiced",]
+  estimated_ln[["coretta2019_di"]] <- fixef(c19_di_ln_bm)["voicingvoiced",]
+  estimated_ln[["coretta2019_mono"]] <- fixef(c19_mono_ln_bm)["voicingvoiced",]
+  estimated_ln[["davis1989"]] <- fixef(d89_ln_bm)["voicevoiced",]
+  estimated_ln[["heffner1937"]] <- fixef(h37_ln_bm)["voicevoiced",]
+  estimated_ln[["housefairbanks1953"]] <- fixef(hf53_ln_bm)["voicevoiced",]
+  estimated_ln[["ko2018"]] <- fixef(k18_ln_bm)["voicePvoice",]
+  estimated_ln[["laeufer1992"]] <- fixef(l92_ln_bm)["voicevoiced",]
+  estimated_ln[["luce1985_final"]] <- fixef(l85_final_ln_bm)["voicevoiced",]
+  estimated_ln[["luce1985_medial"]] <- fixef(l85_medial_ln_bm)["voicevoiced",]
+  estimated_ln[["mack1982"]] <- fixef(m82_ln_bm)["voicevoiced",]
+  estimated_ln[["petersonlehiste1960"]] <- fixef(pl60_ln_bm)["voicevoiced",]
+  estimated_ln[["port1981_di"]] <- fixef(p81_di_ln_bm)["voicevoiced",]
+  estimated_ln[["port1981_mono"]] <- fixef(p81_mono_ln_bm)["voicevoiced",]
+  estimated_ln[["sharf1962_di"]] <- fixef(s62_di_ln_bm)["voicevoiced",]
+  estimated_ln[["sharf1962_mono"]] <- fixef(s62_mono_ln_bm)["voicevoiced",]
+  estimated_ln[["zimmerman1958"]] <- fixef(z58_ln_bm)["voicevoiced",]
+
+  estimated_ln_tbl <- plyr::ldply(estimated_ln, .id = "study") %>%
+    mutate(
+      source = factor("original", levels = c("original", "meta-analysis")),
+      study = factor(study)
+    ) %>%
+    left_join(y = studies)
+
+  saveRDS(estimated_ln_tbl, file = "./data/cache/estimated_ln_tbl.rds")
+}
+```
+
+# Meta-analysis
+
+```{r meta-bm}
+priors <- c(
+  prior(normal(0, 3), class = Intercept),
+  prior(normal(0, 1), class = b, coef = syl_posnonMfinal),
+  prior(normal(0, 0.1), class = sd)
+)
+
+meta_ln_bm <- brm(
+  Estimate | se(`Est.Error`) ~ syl_pos + (1 | study),
+  data = estimated_ln_tbl,
+  prior = priors,
+  control = list(adapt_delta = 0.9999, max_treedepth = 15),
+  seed = 9899,
+  file = "./data/cache/meta_ln_bm"
+)
+
+summary(meta_ln_bm)
+
+meta_ln_bm_est <- fixef(meta_ln_bm)["Intercept","Estimate"]
+meta_ln_bm_q2.5 <- fixef(meta_ln_bm)["Intercept","Q2.5"]
+meta_ln_bm_q97.5 <- fixef(meta_ln_bm)["Intercept","Q97.5"]
+
+post_ln_nonfi <- (c(posterior_samples(meta_ln_bm, pars = "b_Intercept")) +
+  posterior_samples(meta_ln_bm, pars = "b_syl_posnonMfinal"))
+
+meta_ln_bm_syl_q2.5 <- quantile(post_ln_nonfi$b_syl_posnonMfinal, c(0.025))
+meta_ln_bm_syl_q97.5 <- quantile(post_ln_nonfi$b_syl_posnonMfinal, c(0.975))
+meta_ln_bm_syl_q50 <- (meta_ln_bm_syl_q2.5 + meta_ln_bm_syl_q97.5) / 2
+```
+
+## Marginal posterior distributions
+
+```{r marginal-post}
+marginal_ln_post <- posterior_samples(meta_ln_bm, pars = "b_") %>%
+  mutate(
+    final = exp(b_Intercept),
+    `non-final` = exp(b_Intercept + b_syl_posnonMfinal)
+  ) %>%
+  select(final:`non-final`) %>%
+  pivot_longer(everything(), names_to = "position", values_to = "posterior")
+
+marginal_ln_post %>%
+  ggplot(aes(posterior, fill = position)) +
+  geom_vline(aes(xintercept = 1)) +
+  geom_density(colour = NA, alpha = 0.8) +
+  scale_fill_brewer(
+    type = "qual", palette = "Paired"
+  ) +
+  labs(
+    title = "Meta-analytical marginal posterior distributions of the voicing effect",
+    x = "Difference in vowel duration (odds)",
+    fill = "Syllable position",
+    y = element_blank()
+  ) +
+  theme(legend.position = "top")
+```
+
+## Shrinkage
+
+```{r origin}
+estimated_ln_tbl %>%
+  ggplot(aes(reorder(study_ref, Estimate), Estimate, linetype = syl_pos)) +
+  geom_hline(aes(yintercept = 0), colour = "grey") +
+  scale_x_discrete() +
+  annotate("rect", xmin = 4.5, xmax = Inf, ymin = meta_ln_bm_q2.5, ymax = meta_ln_bm_q97.5, alpha = 0.5, fill = "#a6cee3") +
+  annotate("rect", xmin = -Inf, xmax = 4.5, ymin = meta_ln_bm_syl_q2.5, ymax = meta_ln_bm_syl_q97.5, alpha = 0.5, fill = "#1f78b4") +
+  geom_point(size = 2, position = position_dodge(width = 0.8)) +
+  geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5), width = 0, position = position_dodge(width = 0.8)) +
+  scale_color_brewer(type = "qual", palette = "Dark2", breaks = c("original", "meta-analysis")) +
+  scale_y_continuous(breaks = c(-0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1)) +
+  scale_linetype_discrete(labels = c("final", "non-final")) +
+  labs(
+    caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
+    y = "Difference in vowel duration (log-odds)",
+    x = "Study",
+    linetype = "Syllable position",
+    colour = "Source"
+  ) +
+  coord_flip() +
+  theme(panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank())
+```
+
+```{r studies-shrunk}
+# Code adapted from Nicenboim et al. 2018
+
+# We need this since the model includes `num_syl`
+post_nonf <- posterior_samples(meta_ln_bm, pars = "b_syl_posnonMfinal")
+
+studies_shrunk <- (c(posterior_samples(meta_ln_bm, pars = "b_Intercept")) +
+  posterior_samples(meta_ln_bm, pars = "r_study")) %>%
+  bind_cols(post_nonf) %>%
+  # The following mutate sums the random coefficients of the studies with
+  # `num_syl` == "non-final" to the posterior samples of the non_syl term
+  mutate(
+    `r_study[davis1989,Intercept]` = `r_study[davis1989,Intercept]` + b_syl_posnonMfinal,
+    `r_study[sharf1962_di,Intercept]` = `r_study[sharf1962_di,Intercept]` + b_syl_posnonMfinal,
+    `r_study[coretta2019_di,Intercept]` = `r_study[coretta2019_di,Intercept]` + b_syl_posnonMfinal,
+    `r_study[port1981_di,Intercept]` = `r_study[port1981_di,Intercept]` + b_syl_posnonMfinal,
+  ) %>%
+  select(-b_syl_posnonMfinal) %>%
+  summarise_all(list(~list(c(
+    mean(.),
+    quantile(., probs = c(.025, 0.975)),
+    sd(.)
+  )))) %>%
+  unnest(cols = c(`r_study[chen1970,Intercept]`, `r_study[coretta2019_di,Intercept]`,
+    `r_study[coretta2019_mono,Intercept]`, `r_study[davis1989,Intercept]`,
+    `r_study[heffner1937,Intercept]`, `r_study[housefairbanks1953,Intercept]`,
+    `r_study[ko2018,Intercept]`, `r_study[laeufer1992,Intercept]`,
+    `r_study[luce1985_final,Intercept]`, `r_study[luce1985_medial,Intercept]`,
+    `r_study[mack1982,Intercept]`, `r_study[petersonlehiste1960,Intercept]`,
+    `r_study[port1981_di,Intercept]`, `r_study[port1981_mono,Intercept]`,
+    `r_study[sharf1962_di,Intercept]`, `r_study[sharf1962_mono,Intercept]`,
+    `r_study[zimmerman1958,Intercept]`)) %>%
+  transpose() %>%
+  setNames(c("Estimate", "Q2.5", "Q97.5", "Est.Error")) %>%
+  map_df(unlist) %>%
+  mutate(
+    study = estimated_ln_tbl$study,
+    source = factor("meta-analysis", levels = c("original", "meta-analysis"))
+  ) %>%
+  left_join(y = studies)
+```
+
+```{r origin-shrunk-plot, include=TRUE, fig.cap = "Estimated voicing effect from the original source and from the meta-analysis.", out.extra = "width=\\textwidth"}
+bind_rows(estimated_ln_tbl, studies_shrunk) %>%
+  mutate(source = factor(source, levels = c("meta-analysis", "original"))) %>%
+  ggplot(aes(reorder(study_ref, Estimate), Estimate, colour = source, linetype = syl_pos)) +
+  geom_hline(aes(yintercept = 0), colour = "grey") +
+  scale_x_discrete() +
+  annotate("rect", xmin = 4.5, xmax = Inf, ymin = meta_ln_bm_q2.5, ymax = meta_ln_bm_q97.5, alpha = 0.5, fill = "#a6cee3") +
+  annotate("rect", xmin = -Inf, xmax = 4.5, ymin = meta_ln_bm_syl_q2.5, ymax = meta_ln_bm_syl_q97.5, alpha = 0.5, fill = "#1f78b4") +
+  geom_point(size = 2, position = position_dodge(width = 0.8)) +
+  geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5), width = 0, position = position_dodge(width = 0.8)) +
+  scale_color_brewer(type = "qual", palette = "Dark2", breaks = c("original", "meta-analysis")) +
+  scale_y_continuous(breaks = c(-0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1)) +
+  scale_linetype_discrete(labels = c("final", "non-final")) +
+  labs(
+    caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
+    y = "Difference in vowel duration (log-odds)",
+    x = "Study",
+    linetype = "Syllable position",
+    colour = "Source"
+  ) +
+  coord_flip() +
+  theme(panel.grid.major.y = element_blank(), panel.grid.minor.y = element_blank())
+```
+
+# Bias
+
+```{r funnel-sd, include=TRUE, fig.cap = "By-study funnel plot showing the estimate against the standard deviation. The vertical thick and dashed lines are the meta-analytical means of the effect in final and penultimate position."}
+e.max <- by(estimated_ln_tbl$Est.Error, estimated_ln_tbl$syl_pos, range)[[1]][2]
+se_range <- seq(0, e.max, by = 0.001)
+ci <- tibble(
+  x_seq = se_range,
+  ci_lo = meta_ln_bm_est - 1.96 * se_range,
+  ci_up = meta_ln_bm_est + 1.96 * se_range
+)
+
+estimated_ln_tbl %>%
+  filter(syl_pos == "final") %>%
+  ggplot(aes(Estimate, Est.Error)) +
+  geom_line(aes(y = x_seq, x = ci_up), data = ci) +
+  geom_line(aes(y = x_seq, x = ci_lo), data = ci) +
+  geom_vline(aes(xintercept = 0), colour = "grey") +
+  geom_vline(aes(xintercept = meta_ln_bm_est)) +
+  annotate("rect", ymin = -Inf, ymax = Inf, xmin = meta_ln_bm_q2.5, xmax = meta_ln_bm_q97.5, alpha = 0.5, fill = "#a6cee3") +
+  geom_point(size = 3) +
+  labs(
+    x = "Difference in vowel duration (log-odds)"
+  ) +
+  scale_y_reverse()
+```
+
+```{r funnel-precision, include=TRUE, fig.cap = "By-study funnel plot showing the estimate against the precision. The vertical thick and dashed lines are the meta-analytical means of the effect in final and penultimate position."}
+e.min <- by(estimated_ln_tbl$Est.Error, estimated_ln_tbl$syl_pos, range)[[1]][1]
+e.max <- by(estimated_ln_tbl$Est.Error, estimated_ln_tbl$syl_pos, range)[[1]][2]
+se_range <- seq(e.min, e.max, by = 0.001)
+ci <- tibble(
+  y_seq = 1/(seq(e.min, e.max, by = 0.001)^2),
+  ci_lo = meta_ln_bm_est - 1.96 * se_range,
+  ci_up = meta_ln_bm_est + 1.96 * se_range
+)
+
+# plot(seq(0, 30, by = 1) * 1.96, 1/seq(0, 30, by = 1))
+
+estimated_ln_tbl %>%
+  mutate(precision = 1/(Est.Error^2)) %>%
+  filter(syl_pos == "final") %>%
+  ggplot(aes(Estimate, precision)) +
+  geom_vline(aes(xintercept = 0), colour = "grey") +
+  geom_vline(aes(xintercept = meta_ln_bm_est)) +
+  annotate("rect", ymin = -Inf, ymax = Inf, xmin = meta_ln_bm_q2.5, xmax = meta_ln_bm_q97.5, alpha = 0.5, fill = "#a6cee3") +
+  geom_point(size = 3) +
+  scale_x_continuous(breaks = seq(-1, 1, 0.2)) +
+  labs(
+    x = "Difference in vowel duration (log-odds)",
+    shape = "Syllable position"
+  ) +
+  geom_line(aes(y = y_seq, x = ci_up), data = ci) +
+  geom_line(aes(y = y_seq, x = ci_lo), data = ci)
+```
+
+# References
