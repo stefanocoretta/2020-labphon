@@ -586,16 +586,17 @@ marginal_ln_post %>%
 
 ```{r origin-1, include=FALSE}
 estimated_ln_tbl %>%
-  ggplot(aes(reorder(study_ref, Estimate), Estimate, linetype = syl_pos)) +
-  geom_hline(aes(yintercept = 0), colour = "grey") +
+  ggplot(aes(reorder(study_ref, Estimate), exp(Estimate), linetype = syl_pos)) +
+  geom_hline(aes(yintercept = 1), colour = "grey") +
   scale_x_discrete() +
   geom_point(size = 2, position = position_dodge(width = 0.8)) +
-  geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5), width = 0, position = position_dodge(width = 0.8)) +
+  geom_errorbar(aes(ymin = exp(Q2.5), ymax = exp(Q97.5)), width = 0, position = position_dodge(width = 0.8)) +
   scale_color_brewer(type = "qual", palette = "Dark2", breaks = c("original", "meta-analysis")) +
-  scale_y_continuous(breaks = c(-0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1)) +
+  scale_y_continuous(breaks = seq(0.5, 2.5, by = 0.25)) +
   scale_linetype_discrete(labels = c("final", "non-final")) +
   labs(
-    y = "Difference in vowel duration (log-odds)",
+    # caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
+    y = "Difference in vowel duration (odds)",
     x = "Study",
     linetype = "Syllable position",
     colour = "Source"
@@ -609,18 +610,18 @@ ggsave("./img/origin-1.png", width = 7, height = 4.5)
 
 ```{r origin-2, include=FALSE}
 estimated_ln_tbl %>%
-  ggplot(aes(reorder(study_ref, Estimate), Estimate, linetype = syl_pos)) +
-  geom_hline(aes(yintercept = 0), colour = "grey") +
+  ggplot(aes(reorder(study_ref, Estimate), exp(Estimate), linetype = syl_pos)) +
+  geom_hline(aes(yintercept = 1), colour = "grey") +
   scale_x_discrete() +
-  annotate("rect", xmin = 4.5, xmax = Inf, ymin = meta_ln_bm_q2.5, ymax = meta_ln_bm_q97.5, alpha = 0.5, fill = "#a6cee3") +
+  annotate("rect", xmin = 4.5, xmax = Inf, ymin = exp(meta_ln_bm_q2.5), ymax = exp(meta_ln_bm_q97.5), alpha = 0.5, fill = "#a6cee3") +
   geom_point(size = 2, position = position_dodge(width = 0.8)) +
-  geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5), width = 0, position = position_dodge(width = 0.8)) +
+  geom_errorbar(aes(ymin = exp(Q2.5), ymax = exp(Q97.5)), width = 0, position = position_dodge(width = 0.8)) +
   scale_color_brewer(type = "qual", palette = "Dark2", breaks = c("original", "meta-analysis")) +
-  scale_y_continuous(breaks = c(-0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1)) +
+  scale_y_continuous(breaks = seq(0.5, 2.5, by = 0.25)) +
   scale_linetype_discrete(labels = c("final", "non-final")) +
   labs(
     # caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
-    y = "Difference in vowel duration (log-odds)",
+    y = "Difference in vowel duration (odds)",
     x = "Study",
     linetype = "Syllable position",
     colour = "Source"
@@ -634,19 +635,19 @@ ggsave("./img/origin-2.png", width = 7, height = 4.5)
 
 ```{r origin-3}
 estimated_ln_tbl %>%
-  ggplot(aes(reorder(study_ref, Estimate), Estimate, linetype = syl_pos)) +
-  geom_hline(aes(yintercept = 0), colour = "grey") +
+  ggplot(aes(reorder(study_ref, Estimate), exp(Estimate), linetype = syl_pos)) +
+  geom_hline(aes(yintercept = 1), colour = "grey") +
   scale_x_discrete() +
-  annotate("rect", xmin = 4.5, xmax = Inf, ymin = meta_ln_bm_q2.5, ymax = meta_ln_bm_q97.5, alpha = 0.5, fill = "#a6cee3") +
-  annotate("rect", xmin = -Inf, xmax = 4.5, ymin = meta_ln_bm_syl_q2.5, ymax = meta_ln_bm_syl_q97.5, alpha = 0.5, fill = "#1f78b4") +
+  annotate("rect", xmin = 4.5, xmax = Inf, ymin = exp(meta_ln_bm_q2.5), ymax = exp(meta_ln_bm_q97.5), alpha = 0.5, fill = "#a6cee3") +
+  annotate("rect", xmin = -Inf, xmax = 4.5, ymin = exp(meta_ln_bm_syl_q2.5), ymax = exp(meta_ln_bm_syl_q97.5), alpha = 0.5, fill = "#1f78b4") +
   geom_point(size = 2, position = position_dodge(width = 0.8)) +
-  geom_errorbar(aes(ymin = Q2.5, ymax = Q97.5), width = 0, position = position_dodge(width = 0.8)) +
+  geom_errorbar(aes(ymin = exp(Q2.5), ymax = exp(Q97.5)), width = 0, position = position_dodge(width = 0.8)) +
   scale_color_brewer(type = "qual", palette = "Dark2", breaks = c("original", "meta-analysis")) +
-  scale_y_continuous(breaks = c(-0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1)) +
+  scale_y_continuous(breaks = seq(0.5, 2.5, by = 0.25)) +
   scale_linetype_discrete(labels = c("final", "non-final")) +
   labs(
     # caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
-    y = "Difference in vowel duration (log-odds)",
+    y = "Difference in vowel duration (odds)",
     x = "Study",
     linetype = "Syllable position",
     colour = "Source"
