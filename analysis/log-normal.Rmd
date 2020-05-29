@@ -748,6 +748,8 @@ estimated_ln_tbl %>%
     x = "Difference in vowel duration (log-odds)"
   ) +
   scale_y_reverse()
+
+ggsave("./img/funnel-sd.png", width = 7, height = 4.5)
 ```
 
 ```{r funnel-precision, include=TRUE, fig.cap = "By-study funnel plot showing the estimate against the precision. The vertical thick and dashed lines are the meta-analytical means of the effect in final and penultimate position."}
