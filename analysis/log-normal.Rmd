@@ -2,8 +2,8 @@
 title: "Log-normal models"
 author: "Stefano Coretta"
 date: "27/04/2020"
-output: 
-  html_document: 
+output:
+  html_document:
     highlight: tango
     number_sections: yes
     theme: paper
@@ -77,12 +77,18 @@ if (file.exists("./data/cache/estimated_ln_sd_tbl.rds")) {
 # Get studies estimates
 
 The first step is to get the estimate (with respective error) of the voicing effect for each study individually.
-A log-normal family distribution is used here for the likelihood, given evidence that speech durations tend to be log-normally distributed [@rosen2005; @ratnikova2017; @gahl2019].
-The calculated estimates will then be ratios of vowel duration (for example, an estimate of 1.5 means that vowels are 1.5 times longer when the following consonant is voiced).
+A log-normal distribution is used here as the distribution of the outcome variable (vowel duration), given evidence that the duration of speech intervals (segments, utterances, pauses) tend to be log-normally distributed [@rosen2005; @ratnikova2017; @gahl2019].
+For each study, the calculated estimate is the ratio between vowel duration when the vowel is followed by a voiceless consonant vs when the following consonant is voiced (the "voicing effect (VE) ratio"; for example, a VE ratio of 1.5 means that vowels are 1.5 times longer when the following consonant is voiced).
+
+Depending on the nature of the information available from each study, the following methods are used to obtain the estimated VE ratio:
+
+- **Studies that provide measures of central tendency (means) and dispersion (standard deviations)**: Bayesian linear regressions with measurement error.
+- **Studies that only provide measures of central tendency (means)**: Bayesian linear regression.
+- **Studies that provide raw data**: Bayesian linear regression fitted to the raw data.
 
 ## Studies that provide means and standard deviation
 
-Using measurement error models with studies that reported standard deviations.
+Using measurement error models with studies that reported standard deviations together with the means.
 The model includes `mi()` terms, where the standard error is calculated as $sd/\sqrt{N}$ ($N$ is the number of observations from which the standard deviation was obtained). See <https://github.com/paul-buerkner/brms/issues/643#issuecomment-483339742>.
 
 ```{r port1981}
@@ -191,6 +197,8 @@ d89_ln_bm <- brm(
 ```
 
 ## Studies that provide only means (with no standard deviation)
+
+Most studies only provide means, so Bayesian regressions are fitted to the means only.
 
 ```{r heffner1937}
 h37 <- filter(stressed, study == "heffner1937")
@@ -397,7 +405,7 @@ l92_ln_bm <- brm(
 #     voice = factor(voice, levels = c("-voice", "+voice")),
 #     phoneme = factor(phoneme, levels = c("AE1", "EH1", "IH1"))
 #   )
-# 
+#
 # contrasts(k18$phoneme) <- "contr.sum"
 
 priors <- c(
@@ -488,6 +496,8 @@ c19_mono_ln_bm <- brm(
 
 ## Estimated effects with error
 
+Now we make a data set with the estimated VE ratio and relative standard error from each study, to be used in the meta-analysis.
+
 ```{r estimated}
 if (!file.exists("./data/cache/estimated_ln_tbl.rds")) {
   estimated_ln <- list()
@@ -524,6 +534,8 @@ if (!file.exists("./data/cache/estimated_ln_tbl.rds")) {
 ```
 
 # Meta-analysis
+
+We can now fit a meta-analytical model using a Bayesian linear regression with measurement error (added with `se(Est.Error)` in the left-hand side of the model formula).
 
 ```{r meta-bm}
 priors <- c(
@@ -726,6 +738,11 @@ bind_rows(estimated_ln_tbl, studies_shrunk) %>%
 
 # Bias
 
+Potential biases in the meta-analytical estimate of the VE ratio are assessed with the funnel plot method [@light1984].
+For a review of the method see @sterne2005 and @egger1997, for a critique @lau2006.
+
+In presence of bias, the dots in the funnel plot are not symmetrically distributed around the meta-analytical mean (the gray vertical line).
+
 ```{r funnel-sd, include=TRUE, fig.cap = "By-study funnel plot showing the estimate against the standard deviation. The vertical thick and dashed lines are the meta-analytical means of the effect in final and penultimate position."}
 e.max <- by(estimated_ln_tbl$Est.Error, estimated_ln_tbl$syl_pos, range)[[1]][2]
 se_range <- seq(0, e.max, by = 0.001)
@@ -751,6 +768,8 @@ estimated_ln_tbl %>%
 
 ggsave("./img/funnel-sd.png", width = 7, height = 4.5)
 ```
+
+There is some indication of bias towards larger values (two studies with x higher than 0.6).
 
 ```{r funnel-precision, include=TRUE, fig.cap = "By-study funnel plot showing the estimate against the precision. The vertical thick and dashed lines are the meta-analytical means of the effect in final and penultimate position."}
 e.min <- by(estimated_ln_tbl$Est.Error, estimated_ln_tbl$syl_pos, range)[[1]][1]
