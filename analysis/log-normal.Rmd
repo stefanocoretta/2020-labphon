@@ -587,7 +587,7 @@ marginal_ln_post %>%
   ) +
   labs(
     title = "Meta-analytical marginal posterior distributions of the voicing effect",
-    x = "Difference in vowel duration (odds)",
+    x = "Difference in vowel duration (ratio)",
     fill = "Syllable position",
     y = element_blank()
   ) +
@@ -608,7 +608,8 @@ estimated_ln_tbl %>%
   scale_linetype_discrete(labels = c("final", "non-final")) +
   labs(
     # caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
-    y = "Difference in vowel duration (odds)",
+    title = "Studies' estimates of the Voicing Effect ratio",
+    y = "Difference in vowel duration (ratio)",
     x = "Study",
     linetype = "Syllable position",
     colour = "Source"
@@ -633,7 +634,8 @@ estimated_ln_tbl %>%
   scale_linetype_discrete(labels = c("final", "non-final")) +
   labs(
     # caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
-    y = "Difference in vowel duration (odds)",
+    title = "Studies' estimates of the Voicing Effect ratio",
+    y = "Difference in vowel duration (ratio)",
     x = "Study",
     linetype = "Syllable position",
     colour = "Source"
@@ -659,7 +661,8 @@ estimated_ln_tbl %>%
   scale_linetype_discrete(labels = c("final", "non-final")) +
   labs(
     # caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
-    y = "Difference in vowel duration (odds)",
+    title = "Studies' estimates of the Voicing Effect ratio",
+    y = "Difference in vowel duration (ratio)",
     x = "Study",
     linetype = "Syllable position",
     colour = "Source"
@@ -743,7 +746,7 @@ For a review of the method see @sterne2005 and @egger1997, for a critique @lau20
 
 In presence of bias, the dots in the funnel plot are not symmetrically distributed around the meta-analytical mean (the gray vertical line).
 
-```{r funnel-sd, include=TRUE, fig.cap = "By-study funnel plot showing the estimate against the standard deviation. The vertical thick and dashed lines are the meta-analytical means of the effect in final and penultimate position."}
+```{r funnel-sd, include=TRUE}
 e.max <- by(estimated_ln_tbl$Est.Error, estimated_ln_tbl$syl_pos, range)[[1]][2]
 se_range <- seq(0, e.max, by = 0.001)
 ci <- tibble(
@@ -762,6 +765,7 @@ estimated_ln_tbl %>%
   annotate("rect", ymin = -Inf, ymax = Inf, xmin = meta_ln_bm_q2.5, xmax = meta_ln_bm_q97.5, alpha = 0.5, fill = "#a6cee3") +
   geom_point(size = 3) +
   labs(
+    title = "By-study funnel plot of the estimates against their standard deviation",
     x = "Difference in vowel duration (log-odds)"
   ) +
   scale_y_reverse()
