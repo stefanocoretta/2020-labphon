@@ -1,7 +1,7 @@
 ---
-title: "Log-normal models"
-author: "Stefano Coretta"
-date: "27/04/2020"
+title: "Meta-analytical estimates of the effect of voicing on vowel duration in English are biased (LabPhon17, Vancouver)"
+author: "Stefano Coretta --- Institute for Phonetics and Speech Processing (LMU Munich)"
+date: "08/07/2020"
 output:
   html_document:
     highlight: tango
@@ -37,7 +37,9 @@ After these, a great number of studies further confirmed the existence of the ef
 English is the language that by far received the most attention in relation to the voicing effect [@heffner1937; @house1953; @lisker1957; @zimmerman1958; @peterson1960; @house1961; @sharf1962; @sharf1964; @lindblom1967; @halle1967; @halle1967a; @slis1969a; @slis1969b; @chen1970; @klatt1973; @lisker1974; @raphael1975; @umeda1975; @javkin1976; @port1982; @mack1982; @luce1985; @van-summers1987; @kluender1988; @de-jong1991; @laeufer1992; @fowler1992; @de-jong2004; @warren2005; @ko2018; @glewwe2018; @sanker2019, among others].
 
 In light of rising concerns for statistical power and publication bias [@roettger2018a; @kirby2018; @vasishth2019], it is fundamental to obtain a meta-analytical estimate of the voicing effect based on previous work, and to investigate potential biases that can affect the estimate.
-A Bayesian meta-analysis was carried out on 17 Bayesian estimates of the effect of voicing on vowel duration obtained from a selection of 13 studies of English according to the method described in @nicenboim2018a.
+A Bayesian meta-analysis was carried out on 17 Bayesian estimates of the effect of voicing on vowel duration (13 from word-final syllables, 4 from non-word-final syllables) obtained from a selection of 13 studies of English according to the method described in @nicenboim2018a.
+
+Data and code can be found at <https://github.com/stefanocoretta/2020-labphon>.
 
 # Read data
 
@@ -715,7 +717,10 @@ studies_shrunk <- (c(posterior_samples(meta_ln_bm, pars = "b_Intercept")) +
   left_join(y = studies)
 ```
 
-```{r origin-shrunk-plot, include=TRUE, fig.cap = "Estimated voicing effect from the original source and from the meta-analysis.", out.extra = "width=\\textwidth"}
+The following plot shows the level of shrinkage of the individual studies' estimates in the meta-analysis.
+Estimates with greater uncertainty (greater error) shrunk more towards the meta-analytical estimate.
+
+```{r origin-shrunk-plot, include=TRUE, out.extra = "width=\\textwidth", warning=FALSE}
 bind_rows(estimated_ln_tbl, studies_shrunk) %>%
   mutate(source = factor(source, levels = c("meta-analysis", "original"))) %>%
   ggplot(aes(reorder(study_ref, Estimate), Estimate, colour = source, linetype = syl_pos)) +
@@ -729,7 +734,8 @@ bind_rows(estimated_ln_tbl, studies_shrunk) %>%
   scale_y_continuous(breaks = c(-0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1)) +
   scale_linetype_discrete(labels = c("final", "non-final")) +
   labs(
-    caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and penultimate (dark blue) position.",
+    title = "Shrinkage of the studies' estimates",
+    caption = "The shaded areas indicate the 95% CI of the meta-analytical posterior\nof the voicing effect in final (light blue) and non-final (dark blue) position.",
     y = "Difference in vowel duration (log-odds)",
     x = "Study",
     linetype = "Syllable position",
@@ -744,7 +750,10 @@ bind_rows(estimated_ln_tbl, studies_shrunk) %>%
 Potential biases in the meta-analytical estimate of the VE ratio are assessed with the funnel plot method [@light1984].
 For a review of the method see @sterne2005 and @egger1997, for a critique @lau2006.
 
-In presence of bias, the dots in the funnel plot are not symmetrically distributed around the meta-analytical mean (the gray vertical line).
+The following funnel plot shows the studies's mean estimates on the *x*-axis and their estimated error on the *y*-axis.
+The shaded light blue area is the 95% CI of the meta-analytical estimate of the voicing effect in word-final position, while the vertical line is the meta-analytical mean.
+In presence of bias, the dots in the funnel plot are not symmetrically distributed around the meta-analytical mean.
+(The number of studies for the word-non-final position are not sufficient to assess potential bias).
 
 ```{r funnel-sd, include=TRUE}
 e.max <- by(estimated_ln_tbl$Est.Error, estimated_ln_tbl$syl_pos, range)[[1]][2]
@@ -765,7 +774,8 @@ estimated_ln_tbl %>%
   annotate("rect", ymin = -Inf, ymax = Inf, xmin = meta_ln_bm_q2.5, xmax = meta_ln_bm_q97.5, alpha = 0.5, fill = "#a6cee3") +
   geom_point(size = 3) +
   labs(
-    title = "By-study funnel plot of the estimates against their standard deviation",
+    title = "By-study funnel plot of the estimates against their standard deviation (word-final position)",
+    caption = "The shaded area is the 95% CI of the meta-analytical posterior of the voicing effect in word-final position,\nwhile the vertical line is the meta-anlytical mean.",
     x = "Difference in vowel duration (log-odds)"
   ) +
   scale_y_reverse()
@@ -773,9 +783,11 @@ estimated_ln_tbl %>%
 ggsave("./img/funnel-sd.png", width = 7, height = 4.5)
 ```
 
-There is some indication of bias towards larger values (two studies with x higher than 0.6).
+There is some indication of bias towards larger values (there are two studies with x higher than 0.6).
 
-```{r funnel-precision, include=TRUE, fig.cap = "By-study funnel plot showing the estimate against the precision. The vertical thick and dashed lines are the meta-analytical means of the effect in final and penultimate position."}
+Another way is to use precision instead of standard deviation.
+
+```{r funnel-precision, include=TRUE}
 e.min <- by(estimated_ln_tbl$Est.Error, estimated_ln_tbl$syl_pos, range)[[1]][1]
 e.max <- by(estimated_ln_tbl$Est.Error, estimated_ln_tbl$syl_pos, range)[[1]][2]
 se_range <- seq(e.min, e.max, by = 0.001)
@@ -797,11 +809,20 @@ estimated_ln_tbl %>%
   geom_point(size = 3) +
   scale_x_continuous(breaks = seq(-1, 1, 0.2)) +
   labs(
-    x = "Difference in vowel duration (log-odds)",
-    shape = "Syllable position"
+    title = "By-study funnel plot of the estimate against their precision (word-final position)",
+    caption = "The shaded area is the 95% CI of the meta-analytical posterior of the voicing effect in word-final position,\nwhile the vertical line is the meta-anlytical mean.",
+    x = "Difference in vowel duration (log-odds)"
   ) +
   geom_line(aes(y = y_seq, x = ci_up), data = ci) +
   geom_line(aes(y = y_seq, x = ci_lo), data = ci)
 ```
+
+# Conclusions
+
+A meta-analytical study of the voicing effect in English, based on 13 estimates, suggests possible publication bias (with estimates skewed towards greater values).
+The low number of publications that provide numeric summaries of the effect makes it difficult to draw more certain conclusions.
+Moreover, most studies only reported means without related measures of dispersions, which unduly increases the overall certainty of the estimates.
+More work on the voicing effect in English is needed to obtain a more certain estimate of the effect.
+Sharing data and analysis code in future studies is also paramount to aid future meta-analytical estimates.
 
 # References
