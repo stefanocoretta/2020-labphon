@@ -3,6 +3,10 @@ title: "Meta-analytical estimates of the effect of voicing on vowel duration in 
 author: "Stefano Coretta --- Institute for Phonetics and Speech Processing (LMU Munich)"
 date: "08/07/2020"
 output:
+  pdf_document: 
+    highlight: tango
+    number_sections: yes
+    toc: yes
   html_document:
     highlight: tango
     number_sections: yes
