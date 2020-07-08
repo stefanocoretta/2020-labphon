@@ -1,16 +1,16 @@
 ---
 title: "Meta-analytical estimates of the effect of voicing on vowel duration in English are biased (LabPhon17, Vancouver)"
-author: "Stefano Coretta --- Institute for Phonetics and Speech Processing (LMU Munich)"
+author: "Stefano Coretta --- Institute for Phonetics and Speech Processing (LMU Munich), s.coretta@lmu.de"
 date: "08/07/2020"
 output:
-  pdf_document: 
-    highlight: tango
-    number_sections: yes
-    toc: yes
   html_document:
     highlight: tango
     number_sections: yes
     theme: paper
+    toc: yes
+  pdf_document: 
+    highlight: tango
+    number_sections: yes
     toc: yes
 bibliography: references.bib
 ---
@@ -106,7 +106,7 @@ p81_mono <- filter(stressed, study == "port1981_mono") %>%
 # Fitting a lognormal likelihood with (voice|pair) leads to many divergent transitions.
 
 priors <- c(
-  prior(normal(0, 3.2), class = Intercept),
+  prior(normal(0, 3), class = Intercept),
   prior(normal(0, 1), class = b, coef = voicevoiced),
   prior(normal(0, 0.1), class = sigma)
 )
@@ -143,7 +143,7 @@ l85_medial <- filter(stressed, study == "luce1985_medial")
 l85_final <- filter(stressed, study == "luce1985_final")
 
 priors <- c(
-  prior(normal(0, 3.2), class = Intercept),
+  prior(normal(0, 3), class = Intercept),
   prior(normal(0, 1), class = b, coef = voicevoiced),
   prior(normal(0, 0.1), class = sd),
   prior(normal(0, 0.1), class = sigma)
@@ -599,6 +599,17 @@ marginal_ln_post %>%
   ) +
   theme(legend.position = "top")
 ```
+
+```{r marginal-post-ci}
+marginal_ln_post %>%
+  group_by(position) %>%
+  summarise(
+    lower.CI = quantile(posterior, p = 0.025),
+    upper.CI = quantile(posterior, p = 0.975)
+  )
+```
+
+**The 95% CI of the meta-analitical posterior of the voicing effect is [1.4, 1.6] in word-final position, and [1, 1.35] in penultimate position.**
 
 ## Shrinkage
 
